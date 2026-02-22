@@ -88,15 +88,22 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
-    const unsubOsis = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'candidates_osis'), (snapshot) => {
-      setCandidates(prev => ({ ...prev, osis: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) }));
-    });
-    const unsubMpk = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'candidates_mpk'), (snapshot) => {
-      setCandidates(prev => ({ ...prev, mpk: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) }));
-    });
-    return () => { unsubOsis(); unsubMpk(); };
-  }, [user]);
+  if (!user) return;
+  const unsubOsis = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'candidates_osis'), (snapshot) => {
+    // Mengambil data dan mengurutkan berdasarkan field 'no'
+    const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    docs.sort((a, b) => (a.no || 0) - (b.no || 0)); 
+    setCandidates(prev => ({ ...prev, osis: docs }));
+  });
+  
+  const unsubMpk = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'candidates_mpk'), (snapshot) => {
+    // Mengambil data dan mengurutkan berdasarkan field 'no'
+    const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    docs.sort((a, b) => (a.no || 0) - (b.no || 0));
+    setCandidates(prev => ({ ...prev, mpk: docs }));
+  });
+  return () => { unsubOsis(); unsubMpk(); };
+}, [user]);
 
   const handleLogin = async (type, identifier, secret) => {
   setError('');
@@ -237,19 +244,7 @@ export default function App() {
           />
         )}
         {view === 'finish' && <SuccessView isPreview={userRole === 'admin_preview'} />}
-        {view === 'admin_panel' && (
-          <AdminPanel 
-            candidates={candidates} 
-            onAdd={async (cat, name, photo) => {
-              const col = cat === 'osis' ? 'candidates_osis' : 'candidates_mpk';
-              await addDoc(collection(db, 'artifacts', appId, 'public', 'data', col), { name, photo, votes: 0 });
-            }}
-            onDelete={async (cat, id) => {
-              const col = cat === 'osis' ? 'candidates_osis' : 'candidates_mpk';
-              await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', col, id));
-            }}
-          />
-        )}
+        
       </main>
 
       <footer className="mt-10 py-12 text-center">
@@ -261,7 +256,24 @@ export default function App() {
       </footer>
     </div>
   );
-}
+}{view === 'admin_panel' && (
+  <AdminPanel 
+    candidates={candidates} 
+    onAdd={async (cat, name, photo, no) => { // Tambahkan 'no' di sini seperti diskusi sebelumnya
+      const col = cat === 'osis' ? 'candidates_osis' : 'candidates_mpk';
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', col), { 
+        name, 
+        photo, 
+        no: parseInt(no), // Pastikan menyimpan nomor urut
+        votes: 0 
+      });
+    }}
+    onDelete={async (cat, id) => {
+      const col = cat === 'osis' ? 'candidates_osis' : 'candidates_mpk';
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', col, id));
+    }}
+  />
+)}
 
 function LoginView({ onLogin, error }) {
   const [role, setRole] = useState('26'); 
@@ -389,6 +401,7 @@ function AdminPanel({ candidates, onAdd, onDelete }) {
   
   const [newName, setNewName] = useState('');
   const [newPhoto, setNewPhoto] = useState('');
+  const [newNo, setNewNo] = useState('');
   const [newTokenId, setNewTokenId] = useState('');
   const [newTokenPass, setNewTokenPass] = useState('');
   const [newTokenAngkatan, setNewTokenAngkatan] = useState('26');
@@ -511,7 +524,7 @@ function AdminPanel({ candidates, onAdd, onDelete }) {
             <div className="space-y-6">
               {activeTab === 'tokens' ? (
                 <>
-                  <input type="text" placeholder="ID Siswa (Contoh: 26001)" value={newTokenId} onChange={(e) => setNewTokenId(e.target.value)} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-red-600 font-bold" />
+                  <input type="text" placeholder="ID Siswa (Contoh: 260001)" value={newTokenId} onChange={(e) => setNewTokenId(e.target.value)} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-red-600 font-bold" />
                   <input type="text" placeholder="Password (Contoh: A7B9)" value={newTokenPass} onChange={(e) => setNewTokenPass(e.target.value)} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-red-600 font-bold" />
                   <select value={newTokenAngkatan} onChange={(e) => setNewTokenAngkatan(e.target.value)} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold">
                     <option value="26">Angkatan 26</option>
@@ -520,10 +533,29 @@ function AdminPanel({ candidates, onAdd, onDelete }) {
                   </select>
                 </>
               ) : (
-                <>
-                  <input type="text" placeholder="Nama Lengkap" value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-red-600 font-bold" />
-                  <input type="url" placeholder="Link Foto" value={newPhoto} onChange={(e) => setNewPhoto(e.target.value)} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-red-600 font-bold" />
-                </>
+               <>
+  <input 
+    type="number" 
+    placeholder="Nomor Urut (Contoh: 1)" 
+    value={newNo} 
+    onChange={(e) => setNewNo(e.target.value)} 
+    className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-red-600 font-bold" 
+  />
+  <input 
+    type="text" 
+    placeholder="Nama Lengkap" 
+    value={newName} 
+    onChange={(e) => setNewName(e.target.value)} 
+    className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-red-600 font-bold" 
+  />
+  <input 
+    type="url" 
+    placeholder="Link Foto" 
+    value={newPhoto} 
+    onChange={(e) => setNewPhoto(e.target.value)} 
+    className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-red-600 font-bold" 
+  />
+</>
               )}
               <div className="flex gap-4 pt-4">
                 <button onClick={() => setShowAddModal(false)} className="flex-1 py-4 text-slate-400 font-black uppercase text-[10px]">Batal</button>
@@ -532,12 +564,19 @@ function AdminPanel({ candidates, onAdd, onDelete }) {
                   onClick={async () => {
                     setIsSaving(true);
                     if (activeTab === 'tokens') {
-                      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tokens', newTokenId), { password: newTokenPass, angkatan: newTokenAngkatan });
-                      setNewTokenId(''); setNewTokenPass('');
-                    } else {
-                      await onAdd(activeTab, newName, newPhoto);
-                      setNewName(''); setNewPhoto('');
-                    }
+  await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tokens', newTokenId), { password: newTokenPass, angkatan: newTokenAngkatan });
+  setNewTokenId(''); setNewTokenPass('');
+} else {
+  // Update bagian ini agar mengirim 'no' (nomor urut)
+  const col = activeTab === 'osis' ? 'candidates_osis' : 'candidates_mpk';
+  await addDoc(collection(db, 'artifacts', appId, 'public', 'data', col), { 
+    name: newName, 
+    photo: newPhoto, 
+    no: parseInt(newNo), // Mengubah teks ke angka
+    votes: 0 
+  });
+  setNewName(''); setNewPhoto(''); setNewNo('');
+}
                     setIsSaving(false); setShowAddModal(false);
                   }}
                   className="flex-1 py-4 bg-red-600 text-white font-black rounded-2xl uppercase text-[10px]"
@@ -579,4 +618,5 @@ function AdminPanel({ candidates, onAdd, onDelete }) {
   );
 
 }
+
 
