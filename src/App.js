@@ -177,30 +177,20 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <img src={LOGOS.man1} alt="MAN 1" className="h-10 md:h-14 w-auto object-contain" />
-            <img src={LOGOS.maperka} alt="MAPERKA" className="h-10 md:h-14 w-auto object-contain" />
-            <img src={LOGOS.osmantsa} alt="OSMANTSA" className="h-10 md:h-14 w-auto object-contain" />
-            <div className="h-10 w-px bg-slate-200 ml-2 hidden md:block"></div>
-            <div className="hidden md:block ml-2">
-              <h1 className="text-[10px] font-black tracking-widest text-slate-400 uppercase leading-none">E-Voting</h1>
-              <p className="text-sm font-black text-red-600 uppercase">MAN 1 Tulungagung</p>
-            </div>
-          </div>
-          {userRole && (
-            <div className="flex items-center gap-4">
-              {userRole === 'admin_preview' && (
-                <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-600 border border-amber-100 rounded-full text-[10px] font-black uppercase tracking-widest">
-                  <Eye size={14} /> Preview Mode
-                </div>
-              )}
-              <button onClick={() => { setUserRole(null); setView('login'); }} className="px-5 py-2.5 bg-slate-100 rounded-full text-slate-600 hover:text-red-600 font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2">
-                <LogOut size={16} /> Keluar
-              </button>
-            </div>
-          )}
-        </div>
+       <div className="flex items-center gap-2 md:gap-3">
+  {/* Logo-logo tetap ada */}
+  <img src={LOGOS.man1} alt="MAN 1" className="h-8 md:h-14 w-auto object-contain" />
+  <img src={LOGOS.maperka} alt="MAPERKA" className="h-8 md:h-14 w-auto object-contain" />
+  <img src={LOGOS.osmantsa} alt="OSMANTSA" className="h-8 md:h-14 w-auto object-contain" />
+  
+  <div className="h-8 w-px bg-slate-200 ml-1"></div>
+  
+  {/* Teks sekarang muncul di semua ukuran layar, hanya ukurannya yang menyesuaikan */}
+  <div className="ml-1">
+    <h1 className="text-[7px] md:text-[10px] font-black tracking-widest text-slate-400 uppercase leading-none">E-Voting</h1>
+    <p className="text-[10px] md:text-sm font-black text-red-600 uppercase whitespace-nowrap">MAN 1 T.Agung</p>
+  </div>
+</div>
       </header>
 
       <main className="max-w-6xl mx-auto p-4 md:p-10">
@@ -569,4 +559,5 @@ function AdminPanel({ candidates, onAdd, onDelete }) {
       )}
     </div>
   );
+
 }
