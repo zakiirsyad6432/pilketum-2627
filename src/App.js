@@ -7,7 +7,7 @@ import {
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { 
   Users, Lock, CheckCircle2, BarChart3, LogOut, ChevronRight,
-  UserPlus, Star, Trash2, ShieldCheck, Zap
+  UserPlus, Star, Trash2, ShieldCheck, Zap, Copyright
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
@@ -32,7 +32,8 @@ const LOGOS = {
 };
 
 const ADMIN_CREDENTIALS = [
-  { username: 'maperka24', password: 'maperkajaya44730', type: 'full' }
+  { username: 'maperka24', password: 'maperkajaya44730', type: 'full' },
+  { username: 'test1', password: 'test1', type: 'preview' }
 ];
 
 export default function App() {
@@ -45,7 +46,15 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Cek "Ingat Saya" saat pertama buka
   useEffect(() => {
+    const savedAdmin = localStorage.getItem('admin_session');
+    if (savedAdmin) {
+      const adminData = JSON.parse(savedAdmin);
+      setUserRole(adminData.role);
+      setView(adminData.role === 'admin' ? 'admin_panel' : 'login');
+    }
+
     signInAnonymously(auth);
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -69,12 +78,23 @@ export default function App() {
     return () => { unsubOsis(); unsubMpk(); };
   }, [user]);
 
-  const handleLogin = async (type, identifier, secret) => {
+  const handleLogin = async (type, identifier, secret, rememberMe) => {
     setError('');
     if (type === 'admin') {
       const admin = ADMIN_CREDENTIALS.find(acc => acc.username === identifier && acc.password === secret);
-      if (admin) { setUserRole('admin'); setView('admin_panel'); } 
-      else { setError('Akses Admin Ditolak.'); }
+      if (admin) {
+        if (admin.type === 'preview') {
+          setUserRole('admin_preview');
+          setVoterData({ token: 'PREVIEW_MODE', angkatan: 'ADMIN' });
+          setView('voting_osis');
+        } else {
+          setUserRole('admin');
+          setView('admin_panel');
+          if (rememberMe) {
+            localStorage.setItem('admin_session', JSON.stringify({ role: 'admin', user: identifier }));
+          }
+        }
+      } else { setError('Akses Admin Ditolak.'); }
     } else {
       try {
         const tokenDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tokens', identifier));
@@ -84,14 +104,22 @@ export default function App() {
             const voterDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'voters', identifier));
             if (voterDoc.exists()) { setError('Token sudah digunakan.'); } 
             else { setUserRole('voter'); setVoterData({ token: identifier, angkatan: type }); setView('voting_osis'); }
-          } else { setError('Password/Angkatan salah.'); }
+          } else { setError('Password atau ID salah.'); }
         } else { setError('ID tidak ditemukan.'); }
       } catch (err) { setError('Masalah koneksi database.'); }
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('admin_session');
+    setUserRole(null);
+    setView('login');
+    setSelections({ osis: null, mpk: null });
+  };
+
   const submitVote = async () => {
     if (!selections.osis || !selections.mpk) return;
+    if (userRole === 'admin_preview') { setView('finish'); return; }
     setLoading(true);
     try {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'candidates_osis', selections.osis), { votes: increment(1) });
@@ -126,7 +154,7 @@ export default function App() {
             </div>
           </div>
           {userRole && (
-            <button onClick={() => { setUserRole(null); setView('login'); }} className="p-2.5 md:px-5 md:py-3 bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 rounded-2xl font-black text-[10px] uppercase transition-all flex items-center gap-2 border border-transparent hover:border-red-100">
+            <button onClick={handleLogout} className="p-2.5 md:px-5 md:py-3 bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 rounded-2xl font-black text-[10px] uppercase transition-all flex items-center gap-2 border border-transparent hover:border-red-100">
               <LogOut size={16} /><span className="hidden md:block">Keluar</span>
             </button>
           )}
@@ -135,43 +163,60 @@ export default function App() {
 
       <main className="max-w-6xl mx-auto p-5 md:p-12">
         {view === 'login' && <LoginView onLogin={handleLogin} error={error} />}
-        {view === 'voting_osis' && <VotingStep title="Ketua Umum OSIS" candidates={candidates.osis} selection={selections.osis} onSelect={(id) => setSelections(s => ({...s, osis: id}))} onNext={() => setView('voting_mpk')} step={1} />}
-        {view === 'voting_mpk' && <VotingStep title="Ketua Umum MPK" candidates={candidates.mpk} selection={selections.mpk} onSelect={(id) => setSelections(s => ({...s, mpk: id}))} onNext={submitVote} step={2} isLast />}
-        {view === 'finish' && <SuccessView />}
+        {view === 'voting_osis' && <VotingStep title="Ketua Umum OSIS" candidates={candidates.osis} selection={selections.osis} onSelect={(id) => setSelections(s => ({...s, osis: id}))} onNext={() => setView('voting_mpk')} step={1} isPreview={userRole === 'admin_preview'} />}
+        {view === 'voting_mpk' && <VotingStep title="Ketua Umum MPK" candidates={candidates.mpk} selection={selections.mpk} onSelect={(id) => setSelections(s => ({...s, mpk: id}))} onNext={submitVote} step={2} isLast isPreview={userRole === 'admin_preview'} />}
+        {view === 'finish' && <SuccessView isPreview={userRole === 'admin_preview'} />}
         {view === 'admin_panel' && <AdminPanel candidates={candidates} onAdd={async (cat, name, photo, no) => { const col = cat === 'osis' ? 'candidates_osis' : 'candidates_mpk'; await addDoc(collection(db, 'artifacts', appId, 'public', 'data', col), { name, photo, no: parseInt(no), votes: 0 }); }} onDelete={async (cat, id) => { const col = cat === 'osis' ? 'candidates_osis' : 'candidates_mpk'; await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', col, id)); }} />}
       </main>
 
       <footer className="py-16 text-center opacity-40 hover:opacity-100 transition-opacity">
-        <p className="text-[10px] font-black uppercase tracking-[0.5em] text-slate-400">Digital Democracy by Maperka 26/27</p>
+        <div className="flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
+          <Copyright size={14} /> MAPERKA MAN 1 TULUNGAGUNG
+        </div>
       </footer>
     </div>
   );
 }
 
-// --- Sub Components with Enhanced UI ---
+// --- Sub Components ---
 function LoginView({ onLogin, error }) {
   const [role, setRole] = useState('26'); 
   const [id, setId] = useState('');
   const [pass, setPass] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
+
   return (
-    <div className="max-w-md mx-auto mt-6 animate-in fade-in slide-in-from-bottom-10 duration-700">
+    <div className="max-w-xl mx-auto mt-6 animate-in fade-in slide-in-from-bottom-10 duration-700">
       <div className="bg-white rounded-[3rem] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.1)] overflow-hidden border border-slate-100">
-        <div className="bg-slate-900 p-12 text-center relative overflow-hidden">
+        <div className="bg-slate-900 p-10 text-center relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-red-600/20 to-transparent opacity-50"></div>
-          <ShieldCheck className="text-red-500 mx-auto mb-6 relative z-10" size={64} />
-          <h2 className="text-3xl font-black uppercase text-white tracking-tight relative z-10">Otentikasi</h2>
+          <img src={LOGOS.maperka} alt="MAPERKA" className="h-20 w-auto mx-auto mb-6 relative z-10 drop-shadow-2xl" />
+          <h2 className="text-xl md:text-2xl font-black uppercase text-white tracking-tight relative z-10 leading-tight">
+            Selamat Datang di Halaman Pemilihan Calon Ketua Umum Pengurus OSMANTSA Masa Bakti 2026/2027
+          </h2>
+          <p className="text-[10px] text-slate-400 font-bold uppercase mt-4 tracking-[0.2em] relative z-10 px-4">
+            "Suaramu adalah awal dari perubahan besar. Mari wujudkan demokrasi sekolah yang jujur, adil, dan berintegritas."
+          </p>
         </div>
         <div className="p-10 space-y-6">
           <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase text-slate-400 ml-4 tracking-widest">Pilih Angkatan</label>
+            <label className="text-[10px] font-black uppercase text-slate-400 ml-4 tracking-widest">Kategori Siswa</label>
             <select value={role} onChange={(e) => setRole(e.target.value)} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] font-bold outline-none focus:border-red-600 focus:bg-white transition-all appearance-none cursor-pointer">
               <option value="26">Angkatan 26</option><option value="25">Angkatan 25</option><option value="24">Angkatan 24</option><option value="admin">Administrator</option>
             </select>
           </div>
           <input type="text" value={id} onChange={(e) => setId(e.target.value)} placeholder="ID / Token Siswa" className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] font-bold outline-none focus:border-red-600 focus:bg-white transition-all" />
           <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Password" className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] font-bold outline-none focus:border-red-600 focus:bg-white transition-all" />
+          
+          {role === 'admin' && (
+            <div className="flex items-center gap-3 px-4 py-2">
+              <input type="checkbox" id="remember" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-5 h-5 accent-red-600" />
+              <label htmlFor="remember" className="text-[10px] font-black uppercase text-slate-400 cursor-pointer">Ingat Saya</label>
+            </div>
+          )}
+
           {error && <div className="p-4 bg-red-50 text-red-600 text-[10px] font-black rounded-2xl text-center border border-red-100 uppercase animate-bounce">{error}</div>}
-          <button onClick={() => onLogin(role, id, pass)} className="w-full py-7 bg-red-600 hover:bg-red-700 text-white font-black rounded-[2rem] uppercase text-sm tracking-[0.2em] shadow-lg shadow-red-200 transition-all active:scale-95 flex items-center justify-center gap-3">
+          <button onClick={() => onLogin(role, id, pass, rememberMe)} className="w-full py-7 bg-red-600 hover:bg-red-700 text-white font-black rounded-[2rem] uppercase text-sm tracking-[0.2em] shadow-lg shadow-red-200 transition-all active:scale-95 flex items-center justify-center gap-3">
             Masuk Sekarang <ChevronRight size={18} />
           </button>
         </div>
@@ -180,11 +225,11 @@ function LoginView({ onLogin, error }) {
   );
 }
 
-function VotingStep({ title, candidates, selection, onSelect, onNext, step, isLast }) {
+function VotingStep({ title, candidates, selection, onSelect, onNext, step, isLast, isPreview }) {
   return (
     <div className="animate-in fade-in slide-in-from-bottom-12 duration-700">
       <div className="text-center mb-16">
-        <span className="px-5 py-2 bg-red-600 text-white text-[10px] font-black uppercase rounded-full tracking-[0.3em] mb-6 inline-block shadow-md shadow-red-100">Tahap {step} / 2</span>
+        <span className="px-5 py-2 bg-red-600 text-white text-[10px] font-black uppercase rounded-full tracking-[0.3em] mb-6 inline-block shadow-md shadow-red-100">Tahap {step} / 2 {isPreview && "(PREVIEW)"}</span>
         <h2 className="text-4xl md:text-6xl font-black uppercase tracking-tighter text-slate-900">{title}</h2>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
@@ -209,7 +254,7 @@ function VotingStep({ title, candidates, selection, onSelect, onNext, step, isLa
   );
 }
 
-function SuccessView() {
+function SuccessView({ isPreview }) {
   return (
     <div className="text-center py-20 animate-in zoom-in-95 duration-700">
       <div className="max-w-2xl mx-auto bg-white rounded-[5rem] shadow-[0_40px_80px_-15px_rgba(0,0,0,0.15)] p-20 border border-slate-50 relative overflow-hidden">
@@ -217,8 +262,8 @@ function SuccessView() {
         <div className="w-32 h-32 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-12 animate-bounce">
           <CheckCircle2 size={80} className="text-green-500" />
         </div>
-        <h2 className="text-5xl font-black uppercase mb-6 tracking-tighter">Berhasil!</h2>
-        <p className="text-slate-400 font-bold uppercase tracking-widest text-xs mb-12">Suara Anda telah tercatat secara permanen</p>
+        <h2 className="text-5xl font-black uppercase mb-6 tracking-tighter">{isPreview ? 'Selesai Preview' : 'Berhasil!'}</h2>
+        <p className="text-slate-400 font-bold uppercase tracking-widest text-xs mb-12">{isPreview ? 'Ini adalah simulasi, suara tidak dihitung.' : 'Suara Anda telah tercatat secara permanen.'}</p>
         <button onClick={() => window.location.reload()} className="w-full py-8 bg-slate-900 hover:bg-black text-white font-black rounded-[2.5rem] uppercase text-[10px] tracking-[0.5em] transition-all shadow-xl">Selesai & Keluar</button>
       </div>
     </div>
@@ -308,8 +353,8 @@ function AdminPanel({ candidates, onAdd, onDelete }) {
             <div className="space-y-4">
               {activeTab === 'tokens' ? (
                 <>
-                  <input type="text" placeholder="ID Siswa (Contoh: 26001)" value={newTokenId} onChange={(e) => setNewTokenId(e.target.value)} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-red-600" />
-                  <input type="text" placeholder="Password (Contoh: A7B9)" value={newTokenPass} onChange={(e) => setNewTokenPass(e.target.value)} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-red-600" />
+                  <input type="text" placeholder="ID Siswa" value={newTokenId} onChange={(e) => setNewTokenId(e.target.value)} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-red-600" />
+                  <input type="text" placeholder="Password" value={newTokenPass} onChange={(e) => setNewTokenPass(e.target.value)} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-red-600" />
                   <select value={newTokenAngkatan} onChange={(e) => setNewTokenAngkatan(e.target.value)} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-red-600 appearance-none">
                     <option value="26">Angkatan 26</option><option value="25">Angkatan 25</option><option value="24">Angkatan 24</option>
                   </select>
@@ -338,8 +383,8 @@ function AdminPanel({ candidates, onAdd, onDelete }) {
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-6 bg-slate-900/70 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-[3rem] w-full max-w-sm p-12 text-center shadow-2xl border border-slate-100">
             <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-8"><Trash2 className="text-red-600" size={32}/></div>
-            <h3 className="text-xl font-black uppercase mb-4 tracking-tight text-slate-900">Hapus {deleteTarget.type}?</h3>
-            <p className="text-slate-400 font-bold uppercase text-[10px] leading-relaxed mb-10 tracking-widest">Data {deleteTarget.id || deleteTarget.name} akan dihilangkan selamanya dari database.</p>
+            <h3 className="text-xl font-black uppercase mb-4 tracking-tight text-slate-900">Hapus Data?</h3>
+            <p className="text-slate-400 font-bold uppercase text-[10px] leading-relaxed mb-10 tracking-widest">Data ini akan dihilangkan selamanya dari database.</p>
             <div className="flex flex-col gap-3">
               <button onClick={async () => { if (deleteTarget.type === 'token') { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tokens', deleteTarget.id)); } else { await onDelete(activeTab, deleteTarget.id); } setDeleteTarget(null); }} className="w-full py-5 bg-red-600 text-white font-black rounded-2xl uppercase text-[10px] shadow-lg shadow-red-100 active:scale-95 transition-all">Ya, Hapus Sekarang</button>
               <button onClick={() => setDeleteTarget(null)} className="w-full py-5 text-slate-400 font-black uppercase text-[10px]">Batalkan</button>
